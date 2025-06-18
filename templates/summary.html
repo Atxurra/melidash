@@ -1,0 +1,302 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard{% endblock %}
+{% block extra_head %}
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+{% endblock %}
+{% block content %}
+<div class="bg-white p-2 rounded-lg shadow-md mx-auto px-5" style="max-width: 1200px;">
+    <h1 class="text-2xl font-bold mb-4">Sales Dashboard</h1>
+    
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert {% if message.tags == 'success' %}alert-success{% else %}alert-error{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+    
+    <form method="get" class="mb-6 flex flex-col sm:flex-wrap sm:flex-row items-center gap-4">
+        <div class="flex items-center gap-2">
+            <label for="publication" class="text-gray-700">Filter by Publication:</label>
+            <select name="publication" id="publication" class="border p-2 rounded w-full sm:w-64">
+                <option value="">All</option>
+                {% for pub in publications %}
+                    <option value="{{ pub.publication_name }}" {% if selected_publication == pub.publication_name %}selected{% endif %}>{{ pub.publication_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Apply Filters</button>
+    </form>
+
+    <!-- Stock and Financial Metrics -->
+    <div class="mb-8">
+        <h2 class="text-xl font-bold mb-2">Stock and Financial Metrics</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            <div class="bg-green-50 p-4 rounded shadow">
+                <h3 class="font-semibold">Implied Stock: <span class="number-format">{{ implied_stock }}</span></h3>
+                <p class="mt-2">Supply units minus sales units for filtered publications.</p>
+            </div>
+            <div class="bg-green-50 p-4 rounded shadow">
+                <h3 class="font-semibold">Total ROI: <span class="number-format">{{ total_roi|floatformat:2 }}</span>%</h3>
+                <p class="mt-2">ROI for all sold units vs all invested costs.</p>
+            </div>
+            <div class="bg-yellow-50 p-4 rounded shadow">
+                <h3 class="font-semibold">Unallocated Supply Units: <span class="number-format">{{ unallocated_supply_units }}</span></h3>
+                <p class="mt-2">Units from supplies without a publication.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Unassigned Items -->
+    <div class="mb-8">
+        <h2 class="text-xl font-bold mb-2">Unassigned Items</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+            <div class="bg-yellow-50 p-4 rounded shadow">
+                <h3 class="font-semibold">Unassigned Sales: <span class="number-format">{{ unassigned_sales.count }}</span></h3>
+                <p class="mt-2">Sales without a publication.</p>
+            </div>
+            <div class="bg-yellow-50 p-4 rounded shadow">
+                <h3 class="font-semibold">Unallocated Supplies: <span class="number-format">{{ unallocated_supplies.count }}</span></h3>
+                <p class="mt-2">Supplies without a publication.</p>
+            </div>
+            <div class="bg-yellow-50 p-4 rounded shadow">
+                <h3 class="font-semibold">Unallocated Publicity Costs: <span class="number-format">{{ unallocated_publicity_costs.count }}</span></h3>
+                <p class="mt-2">Publicity costs without a publication.</p>
+            </div>
+        </div>
+        {% if unassigned_sales or unallocated_supplies or unallocated_publicity_costs %}
+            <table class="w-full border-collapse mt-4">
+                <thead>
+                    <tr class="bg-gray-200">
+                        <th class="border p-2">Type</th>
+                        <th class="border p-2">Identifier</th>
+                        <th class="border p-2">Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sale in unassigned_sales %}
+                        <tr class="{% cycle 'bg-white' 'bg-gray-50' %}">
+                            <td class="border p-2">Sale</td>
+                            <td class="border p-2">{{ sale.sale_id }}</td>
+                            <td class="border p-2">Units: <span class="number-format">{{ sale.units|default_if_none:"Unknown" }}</span>, Total: <span class="number-format">{{ sale.total|default_if_none:"Unknown" }}</span></td>
+                        </tr>
+                    {% endfor %}
+                    {% for supply in unallocated_supplies %}
+                        <tr class="{% cycle 'bg-white' 'bg-gray-50' %}">
+                            <td class="border p-2">Supply</td>
+                            <td class="border p-2">{{ supply.supply_name }}</td>
+                            <td class="border p-2">Units: <span class="number-format">{{ supply.units|default_if_none:"Unknown" }}</span>, Cost: <span class="number-format">{{ supply.total_cost|default_if_none:"Unknown" }}</span></td>
+                        </tr>
+                    {% endfor %}
+                    {% for cost in unallocated_publicity_costs %}
+                        <tr class="{% cycle 'bg-white' 'bg-gray-50' %}">
+                            <td class="border p-2">Publicity Cost</td>
+                            <td class="border p-2">{{ cost.description|default_if_none:"No Description" }}</td>
+                            <td class="border p-2">Cost: <span class="number-format">{{ cost.cost|default_if_none:"Unknown" }}</span>, Date: {{ cost.date|default_if_none:"Unknown" }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <p class="mt-4"><a href="{% url 'assign_publications' %}" class="text-blue-500 hover:underline">Assign Unallocated Publications</a></p>
+        {% else %}
+            <p class="text-gray-600">No unallocated items.</p>
+        {% endif %}
+    </div>
+
+    <!-- Sales Summary -->
+    <div class="mb-8">
+        <h2 class="text-xl font-bold mb-2">Sales Summary</h2>
+        <div id="sales-plot" class="w-full h-96"></div>
+        <div id="sales-count-plot" class="w-full h-96"></div>
+        <div id="stock-plot" class="w-full h-96"></div>
+        <div id="investment-plot" class="w-full h-96"></div>
+        <table class="w-full border-collapse mt-4 mx-auto">
+            <thead>
+                <tr class="bg-gray-200">
+                    <th class="border p-2">Sale ID</th>
+                    <th class="border p-2">Publication</th>
+                    <th class="border p-2">Buyer</th>
+                    <th class="border p-2">Status</th>
+                    <th class="border p-2">Date</th>
+                    <th class="border p-2">Units</th>
+                    <th class="border p-2">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sale in page_obj %}
+                    <tr class="{% cycle 'bg-white' 'bg-gray-50' %}">
+                        <td class="border p-2">{{ sale.sale_id }}</td>
+                        <td class="border p-2">{{ sale.publication.publication_name|default_if_none:"Unassigned" }}</td>
+                        <td class="border p-2">{{ sale.buyer|default_if_none:"Unknown" }}</td>
+                        <td class="border p-2">{{ sale.status|default_if_none:"Unknown" }}</td>
+                        <td class="border p-2">{{ sale.sale_date|default_if_none:"Unknown" }}</td>
+                        <td class="border p-2 text-right"><span class="number-format">{{ sale.units|default_if_none:"Unknown" }}</span></td>
+                        <td class="border p-2 text-right"><span class="number-format">{{ sale.total|default_if_none:"Unknown" }}</span></td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="7" class="border p-2 text-center">No sales found.</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="mt-4 flex justify-between">
+            {% if page_obj.has_previous %}
+                <a href="?page={{ page_obj.previous_page_number }}{% if selected_publication %}&publication={{ selected_publication }}{% endif %}" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Previous</a>
+            {% else %}
+                <span></span>
+            {% endif %}
+            <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+            {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}{% if selected_publication %}&publication={{ selected_publication }}{% endif %}" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Next</a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Publication Summary -->
+    <div class="mb-8 mx-auto">
+        <h2 class="text-xl font-bold mb-2">Publication Summary</h2>
+        <table class="w-full border-collapse mt-4">
+            <thead>
+                <tr class="bg-gray-200">
+                    <th class="border p-2">Publication</th>
+                    <th class="border p-2">Sold vs Invested ROI (%)</th>
+                    <th class="border p-2">Total Units Sold</th>
+                    <th class="border p-2">Total Income ($)</th>
+                    <th class="border p-2">Total Cost ($)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in summary_table %}
+                    <tr class="{% cycle 'bg-white' 'bg-gray-50' %}">
+                        <td class="border p-2">{{ row.publication_name }}</td>
+                        <td class="border p-2 text-right"><span class="number-format">{{ row.sold_vs_invested_roi|floatformat:2 }}</span></td>
+                        <td class="border p-2 text-right"><span class="number-format">{{ row.units|floatformat:0 }}</span></td>
+                        <td class="border p-2 text-right"><span class="number-format">{{ row.income|floatformat:2 }}</span></td>
+                        <td class="border p-2 text-right"><span class="number-format">{{ row.cost|floatformat:2 }}</span></td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="8" class="border p-2 text-center">No publication data available.</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+// Number formatting function
+function formatNumber(number) {
+    if (isNaN(number) || number === null || number === 'Unknown') return number;
+    const numStr = Number(number).toFixed(2);
+    const [integer, decimal] = numStr.split('.');
+    const formattedInteger = integer.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return `${formattedInteger},${decimal}`;
+}
+
+// Apply formatting to elements
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.number-format').forEach(element => {
+        const value = element.textContent;
+        element.textContent = formatNumber(value);
+    });
+});
+
+// Clean investment plot data
+function cleanInvestmentData(traces) {
+    if (!traces || !Array.isArray(traces)) {
+        console.warn('Investment plot traces are undefined or not an array:', traces);
+        return [];
+    }
+
+    return traces.filter(trace => {
+        // Ensure valid x and y arrays
+        if (!trace.x || !trace.y || !Array.isArray(trace.x) || !Array.isArray(trace.y)) {
+            console.warn('Invalid trace data, skipping:', trace);
+            return false;
+        }
+
+        // Clean y values: replace NaN or null with 0
+        trace.y = trace.y.map(value => {
+            if (value === null || isNaN(value)) {
+                console.debug('Replacing NaN/null with 0 in trace:', trace.name);
+                return 0;
+            }
+            return Number(value);
+        });
+
+        // Check if trace has any non-zero values
+        const hasValidData = trace.y.some(value => value !== 0);
+        if (!hasValidData) {
+            console.warn('Trace has no valid data, skipping:', trace.name);
+            return false;
+        }
+
+        return true;
+    });
+}
+
+// Aggregate investment data for total net investment
+function aggregateInvestmentData(cleanedTraces) {
+    if (!cleanedTraces || cleanedTraces.length === 0) {
+        console.warn('No valid traces to aggregate.');
+        return null;
+    }
+
+    // Collect all unique dates
+    const allDates = new Set();
+    cleanedTraces.forEach(trace => {
+        trace.x.forEach(date => allDates.add(date));
+    });
+    const sortedDates = Array.from(allDates).sort();
+
+    // Initialize sum of y values for each date
+    const aggregatedY = new Array(sortedDates.length).fill(0);
+
+    // Sum y values for each date
+    cleanedTraces.forEach(trace => {
+        trace.x.forEach((date, index) => {
+            const dateIndex = sortedDates.indexOf(date);
+            if (dateIndex !== -1) {
+                aggregatedY[dateIndex] += trace.y[index];
+            }
+        });
+    });
+
+    // Use aggregatedY directly (no cumulative sum)
+    const finalY = aggregatedY.map(value => Number(value.toFixed(2)));
+
+    return {
+        x: sortedDates,
+        y: finalY,
+        type: 'scatter',
+        mode: 'lines',
+        name: 'Total Net Investment',
+        line: { color: '#000000' } // Black color
+    };
+}
+
+// Plotly charts
+const plots = {{ plots|safe }};
+const layout = {{ layout|safe }};
+
+// Render other plots
+Plotly.newPlot('sales-plot', plots.sales_plot, layout.sales_plot);
+Plotly.newPlot('sales-count-plot', plots.sales_count_plot, layout.sales_count_plot);
+Plotly.newPlot('stock-plot', plots.stock_plot, layout.stock_plot);
+
+// Render investment plot with cleaned data and total trace
+const cleanedInvestmentTraces = cleanInvestmentData(plots.investment_plot);
+const totalInvestmentTrace = aggregateInvestmentData(cleanedInvestmentTraces);
+if (cleanedInvestmentTraces.length === 0 && !totalInvestmentTrace) {
+    console.error('No valid investment traces to plot.');
+    document.getElementById('investment-plot').innerHTML = '<p class="text-gray-600 text-center">No valid investment data available.</p>';
+} else {
+    // Combine per-publication traces with total trace
+    const tracesToPlot = totalInvestmentTrace ? [...cleanedInvestmentTraces, totalInvestmentTrace] : cleanedInvestmentTraces;
+    Plotly.newPlot('investment-plot', tracesToPlot, layout.investment_plot);
+}
+</script>
+{% endblock %}

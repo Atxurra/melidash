@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% block title %}Assign Publications{% endblock %}
+{% block content %}
+<div class="max-w-4xl mx-auto bg-white p-4 rounded">
+    <h2 class="text-xl font-bold mb-2">Assign Unassigned Publications</h2>
+    {% if unassigned %}
+        <form method="post" class="space-y-4">
+            {% csrf_token %}
+            {% for item in unassigned %}
+                <div class="border p-4 rounded">
+                    <h4 class="font-semibold text-lg">Publication Name: {{ item.publication_name }}</h4>
+                    <div class="mt-2">
+                        <label for="publication_{{ item.id }}" class="block text-gray-600">Assign to:</label>
+                        <select name="publication_{{ item.id }}" id="publication_{{ item.id }}" class="w-full p-2 border rounded">
+                            <option value="new">Create New Publication</option>
+                            {% for pub in publications %}
+                                <option value="{{ pub.id }}">{{ pub.publication_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% if item.sample_sales %}
+                        <div class="mt-2">
+                            <p class="text-gray-600">Sample Sales (up to 5):</p>
+                            <ul class="list-disc pl-5">
+                                {% for sale in item.sample_sales %}
+                                    <li>Sale ID: {{ sale.sale_id }} - Units: {{ sale.units|default:"Unknown" }} - Total: {{ sale.total|default:"0.0" }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    {% endif %}
+                </div>
+            {% endfor %}
+            <button type="submit" class="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700">Assign Publications</button>
+        </form>
+    {% else %}
+        <p class="text-gray-500">No unassigned publications to assign.</p>
+        <a href="{% url 'summary' %}" class="inline-block bg-blue-600 text-white p-2 rounded hover:bg-blue-700">Back to Dashboard</a>
+    {% endif %}
+</div>
+{% endblock %}
